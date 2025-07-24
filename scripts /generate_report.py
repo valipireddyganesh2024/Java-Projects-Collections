@@ -5,15 +5,27 @@ from datetime import datetime
 INPUT_JSON = 'semgrep_report/semgrep.json'
 OUTPUT_HTML = 'semgrep_report/semgrep-report.html'
 
-SEVERITY_MAPPING = {
+SEVERITY_MAP = {
     "ERROR": "High",
     "WARNING": "Medium",
     "INFO": "Low"
 }
 
+COLOR_MAP = {
+    "High": "#f8d7da",   # Red background
+    "Medium": "#fff3cd", # Orange background
+    "Low": "#d1ecf1"     # Blue background
+}
+
+EMOJI_MAP = {
+    "High": "🔴",
+    "Medium": "🟠",
+    "Low": "🔵"
+}
+
 def load_findings():
     if not os.path.exists(INPUT_JSON):
-        print(f"[!] Input file not found: {INPUT_JSON}")
+        print(f"[!] File not found: {INPUT_JSON}")
         return []
     with open(INPUT_JSON, 'r') as f:
         data = json.load(f)
@@ -25,33 +37,52 @@ def generate_html(findings):
     rows = ""
 
     for finding in findings:
-        rule_id = finding.get("check_id", "")
-        path = finding.get("path", "")
-        start_line = finding.get("start", {}).get("line", "?")
-        message = finding.get("extra", {}).get("message", "")
         severity_raw = finding.get("extra", {}).get("severity", "INFO")
-        severity = SEVERITY_MAPPING.get(severity_raw, "Low")
-
+        severity = SEVERITY_MAP.get(severity_raw, "Low")
         counts[severity] += 1
 
+        color = COLOR_MAP.get(severity, "#ffffff")
+        emoji = EMOJI_MAP.get(severity, "")
+        rule_id = finding.get("check_id", "")
+        message = finding.get("extra", {}).get("message", "")
+        file_path = finding.get("path", "")
+        line_number = finding.get("start", {}).get("line", "?")
+
         rows += f"""
-        <tr>
-            <td>{severity}</td>
-            <td>{path}:{start_line}</td>
+        <tr style="background-color: {color};">
+            <td><strong>{emoji} {severity}</strong></td>
+            <td>{file_path}:{line_number}</td>
             <td>{rule_id}</td>
             <td>{message}</td>
         </tr>
         """
 
     summary = f"""
-    <h2>Semgrep Report Summary</h2>
-    <ul>
-        <li><strong>High:</strong> {counts['High']}</li>
-        <li><strong>Medium:</strong> {counts['Medium']}</li>
-        <li><strong>Low:</strong> {counts['Low']}</li>
-        <li><strong>Total Findings:</strong> {len(findings)}</li>
-        <li><strong>Generated On:</strong> {now}</li>
-    </ul>
+    <h2>Summary by Severity</h2>
+    <table style="width: 50%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Severity</th>
+            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Count</th>
+            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Visual</th>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ccc;">High</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">{counts['High']}</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">🔴</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ccc;">Medium</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">{counts['Medium']}</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">🟠</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ccc;">Low</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">{counts['Low']}</td>
+            <td style="padding: 8px; border: 1px solid #ccc;">🔵</td>
+        </tr>
+    </table>
+    <p><strong>Total Findings:</strong> {len(findings)}</p>
+    <p><strong>Generated On:</strong> {now}</p>
     """
 
     html = f"""
@@ -59,20 +90,28 @@ def generate_html(findings):
     <head>
         <title>Semgrep Security Report</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; padding: 20px; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; }}
-            th {{ background-color: #f2f2f2; }}
-            tr:hover {{ background-color: #f1f1f1; }}
-            .High {{ background-color: #f8d7da; }}
-            .Medium {{ background-color: #fff3cd; }}
-            .Low {{ background-color: #d1ecf1; }}
+            body {{
+                font-family: Arial, sans-serif;
+                padding: 20px;
+                background-color: #f9f9f9;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            th, td {{
+                border: 1px solid #ccc;
+                padding: 8px;
+                text-align: left;
+            }}
+            th {{
+                background-color: #f2f2f2;
+            }}
         </style>
     </head>
     <body>
-        <h1>🔍 Semgrep Scan Results</h1>
+        <h1>🔍 Semgrep Security Report</h1>
         {summary}
-        <h2>Detailed Findings</h2>
         <table>
             <tr>
                 <th>Severity</th>
