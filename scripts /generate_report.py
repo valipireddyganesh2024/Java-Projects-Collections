@@ -1,144 +1,71 @@
 import json
-import os
-from datetime import datetime
+from pathlib import Path
 
-INPUT_JSON = 'semgrep_report/semgrep.json'
-OUTPUT_HTML = 'semgrep_report/semgrep-report.html'
+# Load Semgrep JSON result
+with open("semgrep_report/semgrep.json", "r") as f:
+    data = json.load(f)
 
-SEVERITY_MAP = {
-    "ERROR": "High",
-    "WARNING": "Medium",
-    "INFO": "Low"
-}
+output_file = "semgrep_report/semgrep-report.html"
+Path("semgrep_report").mkdir(parents=True, exist_ok=True)
 
-COLOR_MAP = {
-    "High": "#f8d7da",   # Red background
-    "Medium": "#fff3cd", # Orange background
-    "Low": "#d1ecf1"     # Blue background
-}
+# Counters for severity
+high_count = 0
+medium_count = 0
+low_count = 0
 
-EMOJI_MAP = {
-    "High": "🔴",
-    "Medium": "🟠",
-    "Low": "🔵"
-}
+with open(output_file, "w") as html:
+    html.write("<html><head><title>🔍 Semgrep Security Report</title></head><body>")
+    html.write("<h1>🔍 Semgrep Security Report</h1>")
 
-def load_findings():
-    if not os.path.exists(INPUT_JSON):
-        print(f"[!] File not found: {INPUT_JSON}")
-        return []
-    with open(INPUT_JSON, 'r') as f:
-        data = json.load(f)
-        return data.get("results", [])
+    findings = data.get("results", [])
+    html.write(f"<h2>Total Findings: {len(findings)}</h2>")
 
-def generate_html(findings):
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    counts = {"High": 0, "Medium": 0, "Low": 0}
-    rows = ""
+    # Count severities
+    for result in findings:
+        severity = result.get("extra", {}).get("severity", "").upper()
+        if severity == "ERROR":
+            high_count += 1
+        elif severity == "WARNING":
+            medium_count += 1
+        else:
+            low_count += 1
 
-    for finding in findings:
-        severity_raw = finding.get("extra", {}).get("severity", "INFO")
-        severity = SEVERITY_MAP.get(severity_raw, "Low")
-        counts[severity] += 1
+    # Summary table
+    html.write("<h3>Severity Summary</h3>")
+    html.write("<table border='1' style='border-collapse: collapse;'>")
+    html.write("<tr><th>Severity</th><th>Count</th><th>Visual</th></tr>")
+    html.write(f"<tr><td style='color:red;'>High</td><td>{high_count}</td><td>🔴</td></tr>")
+    html.write(f"<tr><td style='color:orange;'>Medium</td><td>{medium_count}</td><td>🟠</td></tr>")
+    html.write(f"<tr><td style='color:green;'>Low</td><td>{low_count}</td><td>🟢</td></tr>")
+    html.write("</table><hr>")
 
-        color = COLOR_MAP.get(severity, "#ffffff")
-        emoji = EMOJI_MAP.get(severity, "")
-        rule_id = finding.get("check_id", "")
-        message = finding.get("extra", {}).get("message", "")
-        file_path = finding.get("path", "")
-        line_number = finding.get("start", {}).get("line", "?")
+    for result in findings:
+        check_id = result.get("check_id", "N/A")
+        message = result.get("extra", {}).get("message", "No message")
+        severity = result.get("extra", {}).get("severity", "").upper()
+        path = result.get("path", "N/A")
+        line = result.get("start", {}).get("line", "N/A")
+        recommendation = result.get("extra", {}).get("metadata", {}).get("cwe", "N/A")
 
-        rows += f"""
-        <tr style="background-color: {color};">
-            <td><strong>{emoji} {severity}</strong></td>
-            <td>{file_path}:{line_number}</td>
-            <td>{rule_id}</td>
-            <td>{message}</td>
-        </tr>
-        """
+        # Color & Emoji
+        if severity == "ERROR":
+            color = "red"
+            emoji = "🔴"
+        elif severity == "WARNING":
+            color = "orange"
+            emoji = "🟠"
+        else:
+            color = "green"
+            emoji = "🟢"
 
-    summary = f"""
-    <h2>Summary by Severity</h2>
-    <table style="width: 50%; border-collapse: collapse; margin-bottom: 20px;">
-        <tr>
-            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Severity</th>
-            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Count</th>
-            <th style="background-color:#eee; padding: 8px; border: 1px solid #ccc;">Visual</th>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ccc;">High</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">{counts['High']}</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">🔴</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ccc;">Medium</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">{counts['Medium']}</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">🟠</td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ccc;">Low</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">{counts['Low']}</td>
-            <td style="padding: 8px; border: 1px solid #ccc;">🔵</td>
-        </tr>
-    </table>
-    <p><strong>Total Findings:</strong> {len(findings)}</p>
-    <p><strong>Generated On:</strong> {now}</p>
-    """
+        html.write("<div style='margin-bottom:20px;'>")
+        html.write(f"<p><strong>[{emoji}] <span style='color:{color};'>{severity}</span></strong></p>")
+        html.write(f"<code>{check_id} - {path}:{line}</code><br>")
+        html.write(f"<p><strong>Message:</strong> {message}</p>")
+        html.write(f"<p><strong>File:</strong> {path}</p>")
+        html.write(f"<p><strong>Line:</strong> {line}</p>")
+        if recommendation != "N/A":
+            html.write(f"<p><strong>Recommendation (CWE):</strong> {recommendation}</p>")
+        html.write("</div><hr>")
 
-    html = f"""
-    <html>
-    <head>
-        <title>Semgrep Security Report</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                padding: 20px;
-                background-color: #f9f9f9;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-            }}
-            th, td {{
-                border: 1px solid #ccc;
-                padding: 8px;
-                text-align: left;
-            }}
-            th {{
-                background-color: #f2f2f2;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>🔍 Semgrep Security Report</h1>
-        {summary}
-        <table>
-            <tr>
-                <th>Severity</th>
-                <th>Location</th>
-                <th>Rule ID</th>
-                <th>Recommendation</th>
-            </tr>
-            {rows}
-        </table>
-    </body>
-    </html>
-    """
-    return html
-
-def save_report(html):
-    os.makedirs(os.path.dirname(OUTPUT_HTML), exist_ok=True)
-    with open(OUTPUT_HTML, 'w') as f:
-        f.write(html)
-    print(f"[+] Report generated: {OUTPUT_HTML}")
-
-def main():
-    findings = load_findings()
-    if findings:
-        html = generate_html(findings)
-        save_report(html)
-    else:
-        print("[!] No findings to report.")
-
-if __name__ == "__main__":
-    main()
+    html.write("</body></html>")
