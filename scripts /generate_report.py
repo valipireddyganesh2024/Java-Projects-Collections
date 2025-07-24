@@ -1,68 +1,105 @@
 import json
 import os
+from datetime import datetime
 
-with open("semgrep_report/semgrep.json") as f:
-    data = json.load(f)
+INPUT_JSON = 'semgrep_report/semgrep.json'
+OUTPUT_HTML = 'semgrep_report/semgrep-report.html'
 
-results = data.get("results", [])
-count = len(results)
+SEVERITY_MAPPING = {
+    "ERROR": "High",
+    "WARNING": "Medium",
+    "INFO": "Low"
+}
 
-html = f"""
-<!DOCTYPE html>
-<html lang='en'>
-<head>
-    <meta charset='UTF-8'>
-    <title>Semgrep Security Report</title>
-    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css' rel='stylesheet'>
-    <style>
-        body {{ padding: 2rem; }}
-        .high {{ background-color: #f8d7da; }}
-        .medium {{ background-color: #fff3cd; }}
-        .low {{ background-color: #d1ecf1; }}
-        .info {{ background-color: #e2e3e5; }}
-        .card {{ margin-bottom: 1rem; }}
-        pre {{ background: #f8f9fa; padding: 0.5rem; }}
-    </style>
-</head>
-<body>
-    <h1 class='mb-4'>🔍 Semgrep Security Report</h1>
-    <p><strong>Total Findings:</strong> {count}</p>
-    <div class='accordion' id='resultsAccordion'>
-"""
+def load_findings():
+    if not os.path.exists(INPUT_JSON):
+        print(f"[!] Input file not found: {INPUT_JSON}")
+        return []
+    with open(INPUT_JSON, 'r') as f:
+        data = json.load(f)
+        return data.get("results", [])
 
-for i, result in enumerate(results):
-    severity = result.get("extra", {}).get("severity", "info").lower()
-    check_id = result.get("check_id", "N/A")
-    message = result.get("extra", {}).get("message", "N/A")
-    path = result.get("path", "N/A")
-    start_line = result.get("start", {}).get("line", "N/A")
+def generate_html(findings):
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    counts = {"High": 0, "Medium": 0, "Low": 0}
+    rows = ""
 
-    html += f"""
-    <div class='card {severity}'>
-        <div class='card-header' id='heading{i}'>
-            <h2 class='mb-0'>
-                <button class='btn btn-link text-dark' type='button' data-bs-toggle='collapse' data-bs-target='#collapse{i}' aria-expanded='true' aria-controls='collapse{i}'>
-                    [{severity.upper()}] {check_id} - {os.path.basename(path)}:{start_line}
-                </button>
-            </h2>
-        </div>
-        <div id='collapse{i}' class='collapse' aria-labelledby='heading{i}' data-bs-parent='#resultsAccordion'>
-            <div class='card-body'>
-                <p><strong>Message:</strong> {message}</p>
-                <p><strong>File:</strong> {path}</p>
-                <p><strong>Line:</strong> {start_line}</p>
-            </div>
-        </div>
-    </div>
+    for finding in findings:
+        rule_id = finding.get("check_id", "")
+        path = finding.get("path", "")
+        start_line = finding.get("start", {}).get("line", "?")
+        message = finding.get("extra", {}).get("message", "")
+        severity_raw = finding.get("extra", {}).get("severity", "INFO")
+        severity = SEVERITY_MAPPING.get(severity_raw, "Low")
+
+        counts[severity] += 1
+
+        rows += f"""
+        <tr>
+            <td>{severity}</td>
+            <td>{path}:{start_line}</td>
+            <td>{rule_id}</td>
+            <td>{message}</td>
+        </tr>
+        """
+
+    summary = f"""
+    <h2>Semgrep Report Summary</h2>
+    <ul>
+        <li><strong>High:</strong> {counts['High']}</li>
+        <li><strong>Medium:</strong> {counts['Medium']}</li>
+        <li><strong>Low:</strong> {counts['Low']}</li>
+        <li><strong>Total Findings:</strong> {len(findings)}</li>
+        <li><strong>Generated On:</strong> {now}</li>
+    </ul>
     """
 
-html += """
-    </div>
-    <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'></script>
-</body>
-</html>
-"""
+    html = f"""
+    <html>
+    <head>
+        <title>Semgrep Security Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; padding: 20px; }}
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; }}
+            th {{ background-color: #f2f2f2; }}
+            tr:hover {{ background-color: #f1f1f1; }}
+            .High {{ background-color: #f8d7da; }}
+            .Medium {{ background-color: #fff3cd; }}
+            .Low {{ background-color: #d1ecf1; }}
+        </style>
+    </head>
+    <body>
+        <h1>🔍 Semgrep Scan Results</h1>
+        {summary}
+        <h2>Detailed Findings</h2>
+        <table>
+            <tr>
+                <th>Severity</th>
+                <th>Location</th>
+                <th>Rule ID</th>
+                <th>Recommendation</th>
+            </tr>
+            {rows}
+        </table>
+    </body>
+    </html>
+    """
+    return html
 
-os.makedirs("semgrep_report", exist_ok=True)
-with open("semgrep_report/semgrep-report.html", "w") as f:
-    f.write(html)
+def save_report(html):
+    os.makedirs(os.path.dirname(OUTPUT_HTML), exist_ok=True)
+    with open(OUTPUT_HTML, 'w') as f:
+        f.write(html)
+    print(f"[+] Report generated: {OUTPUT_HTML}")
+
+def main():
+    findings = load_findings()
+    if findings:
+        html = generate_html(findings)
+        save_report(html)
+    else:
+        print("[!] No findings to report.")
+
+if __name__ == "__main__":
+    main()
